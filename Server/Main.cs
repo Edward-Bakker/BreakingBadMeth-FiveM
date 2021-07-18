@@ -14,6 +14,12 @@ namespace Server
                 ESX = esx;
             })});
             Debug.WriteLine("Meth car got loaded, made by Edward#2000");
+
+            EventHandlers["esx_methcar:start"] += new Action<Player>(Start);
+            EventHandlers["esx_methcar:stopf"] += new Action<Player, int>(StopFreeze);
+            EventHandlers["esx_methcar:make"] += new Action<Player, float, float, float>(Make);
+            EventHandlers["esx_methcar:finish"] += new Action<Player, int>(Finish);
+            EventHandlers["esx_methcar:blow"] += new Action<Player, float, float, float>(Blow);
         }
 
         private void Start([FromSource] Player source)
