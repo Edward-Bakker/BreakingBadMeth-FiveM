@@ -20,6 +20,7 @@ namespace Server
             EventHandlers["esx_methcar:make"] += new Action<Player, float, float, float>(Make);
             EventHandlers["esx_methcar:finish"] += new Action<Player, int>(Finish);
             EventHandlers["esx_methcar:blow"] += new Action<Player, float, float, float>(Blow);
+            EventHandlers["baseevents:enteredVehicle"] += new Action<Player, Vehicle, int, string>(EnteredVehicle);
         }
 
         private void Start([FromSource] Player source)
@@ -90,6 +91,22 @@ namespace Server
                 TriggerClientEvent("esx_methcar:blowup", xPlayers[i], posx, posy, posz);
             }
             xPlayer.removeInventoryItem("methlab", 1);
+        }
+
+        private void EnteredVehicle([FromSource] Player source, Vehicle currentVehicle, int currentSeat, string vehicleDisplayName)
+        {
+            if (vehicleDisplayName == "JOURNEY" && currentSeat == -1)
+            {
+                TriggerClientEvent("esx_methcar:startcooking2", source, currentVehicle);
+            }
+        }
+
+        private void LeftVehicle([FromSource] Player source, Vehicle currentVehicle, int currentSeat, string vehicleDisplayName)
+        {
+            if (vehicleDisplayName == "JOURNEY")
+            {
+                TriggerClientEvent("esx_methcar:vehiclecheck", source);
+            }
         }
     }
 }

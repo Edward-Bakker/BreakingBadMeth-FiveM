@@ -11,6 +11,7 @@ namespace Client
         dynamic ESX;
         int LastVehicle;
         int CurrentVehicle;
+        int LastKeyPressed;
 
         bool Started;
         bool Displayed;
@@ -18,8 +19,6 @@ namespace Client
         int Progress;
         int Selection;
         int Quality;
-
-        #region Good code
 
         public Main()
         {
@@ -29,15 +28,15 @@ namespace Client
             })});
 
             EventHandlers["esx_methcar:startprod"] += new Action(StartProduction);
+            EventHandlers["esx_methcar:startcooking"] += new Action<Vehicle>(StartCooking);
             EventHandlers["esx_methcar:stop"] += new Action(StopProduction);
             EventHandlers["esx_methcar:stopfreeze"] += new Action<int>(StopFreeze);
             EventHandlers["esx_methcar:blowup"] += new Action<float, float, float>(BlowUpVehicle);
             EventHandlers["esx_methcar:smoke"] += new Action<float, float, float>(VehicleSmoke);
             EventHandlers["esx_methcar:drugged"] += new Action(Drugged);
+            EventHandlers["esx_methcar:vehiclecheck"] += new Action(VehicleCheck);
 
-            StartProduction();
-            VehicleCheck();
-            SelectionInput();
+            GetLastInput();
         }
 
         private void DisplayHelpText(string str)
@@ -121,74 +120,44 @@ namespace Client
             ClearTimecycleModifier();
         }
 
-        #endregion
-
-        #region Bad code
-
-        private async void StartCooking()
+        private async void StartCooking(Vehicle currentVehicle)
         {
+            int playerPed = GetPlayerPed(-1);
+            Vector3 pos = GetEntityCoords(playerPed, true);
+            CurrentVehicle = GetVehiclePedIsUsing(playerPed);
+            LastVehicle = GetVehiclePedIsUsing(playerPed);
+            Random rnd = new Random();
+            Progress = 0;
+            Quality = 0;
+
+            int vehicle = GetVehiclePedIsIn(playerPed, false);
+
+            DisplayHelpText("Press ~INPUT_THROW_GRENADE~ to start making meth.");
+
             while (true)
             {
+                await Delay(500);
 
-                await Delay(10);
-                int playerPed = GetPlayerPed(-1);
-                Vector3 pos = GetEntityCoords(playerPed, true);
-
-                if (IsPedSittingInAnyVehicle(playerPed))
+                if (vehicle >= 1 && GetPedInVehicleSeat(vehicle, -1) == playerPed)
                 {
-                    CurrentVehicle = GetVehiclePedIsUsing(PlayerPedId());
-
-                    int vehicle = GetVehiclePedIsIn(playerPed, false);
-                    LastVehicle = GetVehiclePedIsUsing(playerPed);
-
-                    string modelName = GetDisplayNameFromVehicleModel((uint)GetEntityModel(CurrentVehicle));
-
-                    if (modelName == "JOURNEY" && vehicle >= 1)
+                    if (LastKeyPressed == (int) Keys.G)
                     {
-                        if (GetPedInVehicleSeat(vehicle, -1) == playerPed)
+                        if (pos.Y >= 3500)
                         {
-                            if (!Started)
+                            if (IsVehicleSeatFree(CurrentVehicle, 3))
                             {
-                                if (!Displayed)
-                                {
-                                    DisplayHelpText("Press ~INPUT_THROW_GRENADE~ to start making meth.");
-                                    Displayed = true;
-                                }
+                                TriggerServerEvent("esx_methcar:start");
+                                Pause = false;
                             }
-                            if (IsControlJustReleased(0, (int)Keys.G))
+                            else
                             {
-                                if (pos.Y >= 3500)
-                                {
-                                    if (IsVehicleSeatFree(CurrentVehicle, 3))
-                                    {
-                                        TriggerServerEvent("esx_methcar:start");
-                                        Pause = false;
-                                        Progress = 0;
-                                        Selection = 0;
-                                        Quality = 0;
-                                    }
-                                    else
-                                    {
-                                        DisplayHelpText("~r~The car is already occupied");
-                                    }
-                                }
-                                else
-                                {
-                                    ESX.ShowNotification("~r~You are too close to the city, head further up north to begin meth production.");
-                                }
+                                DisplayHelpText("~r~The car is already occupied");
                             }
                         }
-                    }
-                }
-                else
-                {
-                    if (Started)
-                    {
-                        Started = false;
-                        Displayed = false;
-                        TriggerEvent("esx_methcar:stop");
-                        Debug.WriteLine("Stopped making drugs");
-                        FreezeEntityPosition(LastVehicle, false);
+                        else
+                        {
+                            ESX.ShowNotification("~r~You are too close to the city, head further up north to begin meth production.");
+                        }
                     }
                 }
 
@@ -197,422 +166,50 @@ namespace Client
                     if (Progress < 100)
                     {
                         await Delay(6000);
-                        if (!Pause && IsPedInAnyVehicle(playerPed, false))
+                        if (!Pause)
                         {
                             Progress++;
                             ESX.ShowNotification($"~r~Meth production: ~g~~h~ {Progress} % ");
-                            await Delay(6000);
                         }
 
-                        // EVENT 1
-                        if (Progress == 23)
+                        switch(Progress)
                         {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~The propane pipe is leaking, what do you do?");
-                                ESX.ShowNotification("~o~1. Fix using tape");
-                                ESX.ShowNotification("~o~2. Leave it be");
-                                ESX.ShowNotification("~o~3. Replace it");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~The tape kind of stopped the leak");
-                                Pause = false;
-                                Quality += 3;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~The propane tank blew up, you messed up...");
-                                SetVehicleEngineHealth(CurrentVehicle, 0f);
-                                Started = false;
-                                Displayed = false;
-                                Quality = 0;
-                                TriggerServerEvent("esx_methcar:blow", pos.X, pos.Y, pos.Z);
-                                ApplyDamageToPed(playerPed, 10, false);
-                                Debug.WriteLine("Stopped producing drugs");
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~Good job, the pipe wasn't in good condition");
-                                Pause = false;
-                                Quality += 5;
-                            }
-                        }
-                        // Event 2
-                        else if (Progress == 31)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~You spilled a bottle of acetone on the ground, what do you do?");
-                                ESX.ShowNotification("~o~1. Open the windows to get rid of the smell");
-                                ESX.ShowNotification("~o~2. Leave it be");
-                                ESX.ShowNotification("~o~3. Put on a mask with airfilter");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotificaiton("~r~You opened the windows to get rid of the smell");
-                                Pause = false;
-                                Quality--;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~You got high from inhaling acetone too much");
-                                Pause = false;
-                                TriggerEvent("esx_methcar:drugged");
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotificaiton("~r~That's an easy way to fix the issue... I guess");
-                                SetPedPropIndex(playerPed, 1, 26, 7, true);
-                                Pause = false;
-                            }
-                        }
-                        // Event 3
-                        else if (Progress == 39)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~Meth becomes solid too fast, what do you do?");
-                                ESX.ShowNotification("~o~1. Raise the pressure");
-                                ESX.ShowNotification("~o~2. Raise the temperature");
-                                ESX.ShowNotification("~o~3. Lower the pressure");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~You raised the pressure and the propane started escaping, you lowered it and it's okay for now");
-                                Pause = false;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~Raising the temperature helped...");
-                                Pause = false;
-                                Quality += 5;
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~Lowering the pressure just made it worse...");
-                                Quality -= 4;
-                                Pause = false;
-                            }
-                        }
-                        // Event 4
-                        else if (Progress == 42)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~You accidentally pour too much acetone, what do you do?");
-                                ESX.ShowNotification("~o~1. Do nothing");
-                                ESX.ShowNotification("~o~2. Try sucking it out using a syringe");
-                                ESX.ShowNotification("~o~3. Add more lithium to balance it out");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~The meth is now smelling like acetone");
-                                Pause = false;
-                                Quality -= 3;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~It kind of worked, but it's still too much");
-                                Pause = false;
-                                Quality--;
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~You successfully balanced both chemicals out and it's good again");
-                                Pause = false;
-                                Quality -= 3;
-                            }
-                        }
-                        // Event 5
-                        else if (Progress == 48)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~You found some water coloring, what do you do?");
-                                ESX.ShowNotification("~o~1. Add it in");
-                                ESX.ShowNotification("~o~2. Put it away");
-                                ESX.ShowNotification("~o~3. Drink it");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~Good idea, people like colors");
-                                Pause = false;
-                                Quality += 4;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~Yeah it might destroy the taste of meth");
-                                Pause = false;
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~You are a bit weird and feel dizzy but it's all good");
-                                Pause = false;
-                            }
-                        }
-                        // Event 6
-                        else if (Progress == 56)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~The filter is clogged, what do you do?");
-                                ESX.ShowNotification("~o~1. Clean it using compressed air");
-                                ESX.ShowNotification("~o~2. Replace the filter");
-                                ESX.ShowNotification("~o~3. Clean it using a tooth brush");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~Compressed air sprayed the liquid meth all over you");
-                                Pause = false;
-                                Quality -= 2;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~Replacing it was probably the best option");
-                                Pause = false;
-                                Quality += 3;
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~This worked quite well but its still kinda dirty");
-                                Pause = false;
-                                Quality--;
-                            }
-                        }
-                        // Event 6
-                        else if (Progress == 59)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~You spilled a bottle of acetone on the ground, what do you do?");
-                                ESX.ShowNotification("~o~1. Open the windows to get rid of the smell");
-                                ESX.ShowNotification("~o~2. Leave it be");
-                                ESX.ShowNotification("~o~3. Put on a mask with airfilter");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~You opened the windows to get rid of the smell");
-                                Pause = false;
-                                Quality--;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("Selected 2");
-                                ESX.ShowNotification("~r~You got high from inhaling acetone too much");
-                                Pause = false;
-                                TriggerEvent("esx_methcar:drugged");
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~That's an easy way to fix the issue... I guess");
-                                Pause = false;
-                                SetPedPropIndex(playerPed, 1, 26, 7, true);
-                            }
-                        }
-                        // Event 7
-                        else if (Progress == 64)
-                        {
-                            Pause = true;
-                            if (Selection == 0)
-                            {
-                                ESX.ShowNotification("~o~The propane pipe is leaking, what do you do?");
-                                ESX.ShowNotification("~o~1. Fix using tape");
-                                ESX.ShowNotification("~o~2. Leave it be");
-                                ESX.ShowNotification("~o~3. Replace it");
-                                ESX.ShowNotification("~c~Press the number of the option you want to do");
-                            }
-                            else if (Selection == 1)
-                            {
-                                Debug.WriteLine("Selected 1");
-                                ESX.ShowNotification("~r~The tape kind of stopped the leak");
-                                Pause = false;
-                                Quality -= 3;
-                            }
-                            else if (Selection == 2)
-                            {
-                                Debug.WriteLine("~r~The propane tank blew up, you messed up...");
-                                SetVehicleEngineHealth(CurrentVehicle, 0f);
-                                Quality = 0;
-                                Started = false;
-                                Displayed = false;
-                                TriggerServerEvent("esx_methcar:blow", pos.X, pos.Y, pos.Z);
-                                ApplyDamageToPed(playerPed, 10, false);
-                                Debug.WriteLine("Stopped producing drugs");
-                            }
-                            else if (Selection == 3)
-                            {
-                                Debug.WriteLine("Selected 3");
-                                ESX.ShowNotification("~r~Good job, the pipe wasn't in a good condition");
-                                Pause = false;
-                                Quality += 5;
-                            }
-                        }
-                        // Event 8
-                        else if (Progress == 72)
-                        {
-                            Pause = true;
-                            switch (Selection)
-                            {
-                                case 1:
-                                    Debug.WriteLine("Selected 1");
-                                    ESX.ShowNotification("~r~Compressed air sprayed the liquid meth all over you");
-                                    Pause = false;
-                                    Quality -= 2;
-                                    break;
-                                case 2:
-                                    Debug.WriteLine("Selected 2");
-                                    ESX.ShowNotification("~r~Replacing it was probably the best option");
-                                    Pause = false;
-                                    Quality += 3;
-                                    break;
-                                case 3:
-                                    Debug.WriteLine("Selected 3");
-                                    ESX.ShowNotification("~o~This worked quite well but it's still kind of dirty");
-                                    Pause = false;
-                                    Quality--;
-                                    break;
-                                default:
-                                    ESX.ShowNotification("~o~The filter is clogged, what do you do?");
-                                    ESX.ShowNotification("~o~1. Clean it using compressed air");
-                                    ESX.ShowNotification("~o~2. Replace the filter");
-                                    ESX.ShowNotification("~o~3. Clean it using a tooth brush");
-                                    ESX.ShowNotification("~c~Press the number of the option you want to do");
-                                    break;
-                            }
-                        }
-                        // Event 9
-                        else if (Progress == 77)
-                        {
-                            Pause = true;
-                            switch (Selection)
-                            {
-                                case 1:
-                                    Debug.WriteLine("Selected 1");
-                                    ESX.ShowNotification("~r~The meth now smells like acetone");
-                                    Pause = false;
-                                    Quality -= 3;
-                                    break;
-                                case 2:
-                                    Debug.WriteLine("Selected 2");
-                                    ESX.ShowNotification("~r~It kind of worked but it's still too much");
-                                    Pause = false;
-                                    Quality--;
-                                    break;
-                                case 3:
-                                    Debug.WriteLine("Selected 3");
-                                    ESX.ShowNotification("~r~You successfully balanced both chemicals out and it's good again");
-                                    Pause = false;
-                                    Quality += 3;
-                                    break;
-                                default:
-                                    ESX.ShowNotification("~o~You accidentally pour too much acetone, what do you?");
-                                    ESX.ShowNotification("~o~1. Do nothing");
-                                    ESX.ShowNotification("~o~2. Try to suck it out using a syringe");
-                                    ESX.ShowNotification("~o~3. Add more lithium to balance it out");
-                                    ESX.ShowNotification("~c~Press the number of the option you want to do");
-                                    break;
-                            }
-                        }
-                        // Event 10
-                        else if (Progress == 83)
-                        {
-                            Pause = true;
-                            switch (Selection)
-                            {
-                                case 1:
-                                    Debug.WriteLine("Selected 1");
-                                    ESX.ShowNotification("~r~Good job, you need to work first, shit later");
-                                    Pause = false;
-                                    Quality++;
-                                    break;
-                                case 2:
-                                    Debug.WriteLine("Selected 2");
-                                    ESX.ShowNotification("~r~While you were outside the glas fell off the table and spilled all over the floor...");
-                                    Pause = false;
-                                    Quality -= 2;
-                                    break;
-                                case 3:
-                                    Debug.WriteLine("Selected 3");
-                                    ESX.ShowNotification("~r~The air smells like shit now, the meth smells like shit now");
-                                    Pause = false;
-                                    Quality--;
-                                    break;
-                                default:
-                                    ESX.ShowNotification("~o~You need to take a shit, what do you do?");
-                                    ESX.ShowNotification("~o~1. Try to hold it");
-                                    ESX.ShowNotification("~o~2. Go outside and take a shit");
-                                    ESX.ShowNotification("~o~3. Shit inside");
-                                    ESX.ShowNotification("~c~Press the number of the option you want to do");
-                                    break;
-                            }
-                        }
-                        // Event 11
-                        else if (Progress == 89)
-                        {
-                            Pause = true;
-                            switch (Selection)
-                            {
-                                case 1:
-                                    Debug.WriteLine("Selected 1");
-                                    ESX.ShowNotification("~r~Now you get a few more baggies out of it");
-                                    Pause = false;
-                                    Quality++;
-                                    break;
-                                case 2:
-                                    Debug.WriteLine("Selected 2");
-                                    ESX.ShowNotification("~r~You are a good drug maker, your product is high quality");
-                                    Pause = false;
-                                    Quality++;
-                                    break;
-                                case 3:
-                                    Debug.WriteLine("Selected 3");
-                                    ESX.ShowNotification("~r~That's a bit too much, it's more glass than meth but ok");
-                                    Pause = false;
-                                    Quality--;
-                                    break;
-                                default:
-                                    ESX.ShowNotification("~o~Do you add some glass pieces to the meth so it looks like you have more of it?");
-                                    ESX.ShowNotification("~o~1. Yes!");
-                                    ESX.ShowNotification("~o~2. No");
-                                    ESX.ShowNotification("~o~3. What if I add meth to glass instead?");
-                                    ESX.ShowNotification("~c~Press the number of the option you want to do");
-                                    break;
-                            }
+                            case 20:
+                                //Implement first event
+                                break;
+                            case 30:
+                                //Implement second event
+                                break;
+                            case 40:
+                                //Implement third event
+                                break;
+                            case 45:
+                                //Implement fourth event
+                                break;
+                            case 50:
+                                //Implement fifth event
+                                break;
+                            case 55:
+                                //Implement sixth event
+                                break;
+                            case 60:
+                                //Implement seventh event
+                                break;
+                            case 65:
+                                //Implement eigth event
+                                break;
+                            case 70:
+                                //Implement ninth event
+                                break;
+                            case 75:
+                                //Implement tenth event
+                                break;
+                            case 80:
+                                //Implement eleventh event
+                                break;
+                            case 90:
+                                //Implement twelfth event
+                                break;
                         }
 
                         if (IsPedInAnyVehicle(playerPed, false))
@@ -622,7 +219,6 @@ namespace Client
                             {
                                 Selection = 0;
                                 Quality++;
-                                Random rnd = new Random();
                                 Progress += rnd.Next(1, 2);
                                 ESX.ShowNotification($"~r~Meth production: ~g~~h~ {Progress}%");
                             }
@@ -635,8 +231,6 @@ namespace Client
                     else
                     {
                         TriggerEvent("esx_methcar:stop");
-                        Progress = 100;
-                        ESX.ShowNotification($"~r~Meth production: ~g~~h~ {Progress}%");
                         ESX.ShowNotification("~g~~h~Production finished");
                         TriggerServerEvent("esx_methcar:finish", Quality);
                         FreezeEntityPosition(LastVehicle, false);
@@ -645,30 +239,23 @@ namespace Client
             }
         }
 
-        private async void VehicleCheck()
+        private void VehicleCheck()
+        {
+            if (Started)
+            {
+                Started = false;
+                Displayed = false;
+                TriggerEvent("esx_methcar:stop");
+                Debug.WriteLine("Stopped making drugs");
+                FreezeEntityPosition(LastVehicle, false);
+            }
+        }
+
+        private async void GetLastInput()
         {
             while (true)
             {
                 await Delay(1000);
-                if (!IsPedInAnyVehicle(GetPlayerPed(-1), false))
-                {
-                    if (Started)
-                    {
-                        Started = false;
-                        Displayed = false;
-                        TriggerEvent("esx_methcar:stop");
-                        Debug.WriteLine("Stopped making drugs");
-                        FreezeEntityPosition(LastVehicle, false);
-                    }
-                }
-            }
-        }
-
-        private async void SelectionInput()
-        {
-            while (true)
-            {
-                await Delay(500);
                 if (Pause)
                 {
                     if (IsControlJustReleased(0, (int)Keys.D1))
@@ -689,6 +276,5 @@ namespace Client
                 }
             }
         }
-        #endregion
     }
 }
