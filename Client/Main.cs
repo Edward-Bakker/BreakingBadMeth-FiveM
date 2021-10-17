@@ -11,7 +11,6 @@ namespace Client
         dynamic ESX;
         int LastVehicle;
         int CurrentVehicle;
-        int LastKeyPressed;
 
         bool Started;
         bool Displayed;
@@ -140,7 +139,7 @@ namespace Client
 
                 if (vehicle >= 1 && GetPedInVehicleSeat(vehicle, -1) == playerPed)
                 {
-                    if (LastKeyPressed == (int) Keys.G)
+                    if (IsControlJustReleased(0, (int) Keys.G))
                     {
                         if (pos.Y >= 3500)
                         {

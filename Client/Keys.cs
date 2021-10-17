@@ -5,7 +5,6 @@ namespace Client
     {
         public enum Keys
         {
-            
             G = 47,
             D1 = 157,
             D2 = 158,
